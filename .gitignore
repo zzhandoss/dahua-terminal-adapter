@@ -1,0 +1,8 @@
+node_modules/
+release/out/
+release/staging/
+
+.env
+*.db
+
+.idea/
