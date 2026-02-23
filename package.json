@@ -1,7 +1,8 @@
 {
   "name": "dahua-adapter",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
+  "packageManager": "pnpm@10.20.0",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
