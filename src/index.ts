@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { resolve } from "node:path";
 import { loadEnv } from "./config/env.js";
-import { logger } from "./shared/logger.js";
+import { closeLogger, logger } from "./shared/logger.js";
 import { SqliteStore } from "./infra/store/sqlite-store.js";
 import { DeviceServiceClient } from "./infra/ds/device-service-client.js";
 import { EventStrategyRegistry } from "./domain/events/event-strategy-registry.js";
@@ -35,6 +35,7 @@ async function main(): Promise<void> {
   } catch (error) {
     await server.close();
     store.close();
+    closeLogger();
     throw error;
   }
 
@@ -42,6 +43,7 @@ async function main(): Promise<void> {
     await runtime.stop();
     await server.close();
     store.close();
+    closeLogger();
     process.exit(0);
   };
 
@@ -55,5 +57,6 @@ async function main(): Promise<void> {
 
 void main().catch((error) => {
   logger.error({ err: error }, "fatal startup error");
+  closeLogger();
   process.exit(1);
 });

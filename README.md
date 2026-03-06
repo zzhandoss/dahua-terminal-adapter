@@ -19,6 +19,13 @@ TypeScript adapter for Dahua terminals with Device Service (DS) as source of tru
 - Supports DS pull backfill via `POST /events/backfill`.
 - Supports identity lookup via `POST /identity/find` (exact match, enriched metadata).
 - Supports user export via `POST /identity/export-users`.
+- Supports user create/update via:
+  - `POST /identity/users/create`
+  - `POST /identity/users/update`
+- Supports bulk user create via:
+  - `POST /identity/users/bulk-create`
+- Supports user photo read via:
+  - `POST /identity/users/photo/get`
 - Exposes monitoring:
   - `GET /metrics`
   - `GET /monitor/snapshot`
@@ -40,6 +47,22 @@ All JSON endpoints return:
 
 - success: `{ "success": true, "data": ... }`
 - error: `{ "success": false, "error": { "code": "...", "message": "...", "data"?: ... } }`
+
+## Identity API for DS/Core
+
+For the full DS-facing contract, request/response examples and write semantics, see:
+
+- `docs/identity-api.md`
+
+Covered flows:
+
+- export users from one terminal, selected terminals, or all assigned terminals;
+- flat and grouped export views;
+- create users in terminals;
+- update users in terminals;
+- bulk-create users in one or more terminals with skip-if-exists semantics;
+- read current user face/photo from a specific terminal;
+- per-device partial success reporting for fan-out writes.
 
 ## Device Settings (`settingsJson`)
 

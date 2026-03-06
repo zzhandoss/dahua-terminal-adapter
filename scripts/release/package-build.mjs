@@ -33,9 +33,12 @@ function assertRequiredPath(pathLabel, pathValue) {
 function copyPlatformScripts(target, stagingDir) {
   if (target === "linux-x64") {
     copyPath(join(ROOT_DIR, "scripts", "install", "linux"), join(stagingDir, "scripts", "install", "linux"));
-    return;
+  } else {
+    copyPath(join(ROOT_DIR, "scripts", "install", "windows"), join(stagingDir, "scripts", "install", "windows"));
   }
-  copyPath(join(ROOT_DIR, "scripts", "install", "windows"), join(stagingDir, "scripts", "install", "windows"));
+  if (existsSync(join(ROOT_DIR, "ops"))) {
+    copyPath(join(ROOT_DIR, "ops"), join(stagingDir, "ops"));
+  }
 }
 
 function writeBuildMeta(target, stagingDir, version) {

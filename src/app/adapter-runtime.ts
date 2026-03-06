@@ -4,13 +4,23 @@ import type {
   AdapterLease,
   BackfillRequest,
   DeviceDirection,
-  IdentityExportUser,
+  IdentityBulkCreateUsersRequest,
+  IdentityExportUsersRequest,
+  IdentityExportUsersResponse,
   IdentityFindMatch,
   IdentityFindRequest,
+  IdentityUserPhotoGetRequest,
+  IdentityUserPhotoRecord,
+  IdentityBulkCreateUserDeviceResult,
+  IdentityWriteUserDeviceResult,
+  IdentityWriteUserRequest,
   NormalizedEvent
 } from "../contracts/device-service.js";
 import { BackfillService } from "../domain/backfill/backfill-service.js";
 import { IdentityFindService } from "../domain/identity-find/identity-find-service.js";
+import { IdentityExportService } from "../domain/identity-export/identity-export-service.js";
+import { IdentityPhotoService } from "../domain/identity-photo/identity-photo-service.js";
+import { IdentityWriteService } from "../domain/identity-write/identity-write-service.js";
 import type { EventNormalizationPipeline } from "../domain/events/event-normalization-pipeline.js";
 import { DeviceServiceClient } from "../infra/ds/device-service-client.js";
 import type { SqliteStore } from "../infra/store/sqlite-store.js";
@@ -41,6 +51,9 @@ export class AdapterRuntime {
   private readonly clientFactory: DahuaClientFactory;
   private readonly backfillService: BackfillService;
   private readonly identityFindService: IdentityFindService;
+  private readonly identityExportService: IdentityExportService;
+  private readonly identityPhotoService: IdentityPhotoService;
+  private readonly identityWriteService: IdentityWriteService;
   private readonly deliveryService: DeliveryService;
   private readonly mockEmitter: MockPushEmitter | null;
 
@@ -73,6 +86,9 @@ export class AdapterRuntime {
       : null;
     this.backfillService = new BackfillService(this.store, this.assignments, this.clientFactory, logger);
     this.identityFindService = new IdentityFindService(this.assignments, this.clientFactory, logger);
+    this.identityExportService = new IdentityExportService(this.assignments, this.clientFactory, logger);
+    this.identityPhotoService = new IdentityPhotoService(this.assignments, this.clientFactory, logger);
+    this.identityWriteService = new IdentityWriteService(this.assignments, this.clientFactory, logger);
     this.deliveryService = new DeliveryService(this.store, this.dsClient, this.metrics, logger);
   }
 
@@ -120,18 +136,12 @@ export class AdapterRuntime {
     return this.backfillService.fetch(input);
   }
 
-  async findIdentity(input: IdentityFindRequest): Promise<IdentityFindMatch[]> {
-    return this.identityFindService.find(input);
-  }
-
-  async exportIdentityUsers(input: {
-    deviceId: string;
-    limit: number;
-    offset: number;
-    includeCards: boolean;
-  }): Promise<IdentityExportUser[]> {
-    return this.identityFindService.exportUsers(input);
-  }
+  async findIdentity(input: IdentityFindRequest): Promise<IdentityFindMatch[]> { return this.identityFindService.find(input); }
+  async exportIdentityUsers(input: IdentityExportUsersRequest): Promise<IdentityExportUsersResponse> { return this.identityExportService.exportUsers(input); }
+  async getIdentityUserPhoto(input: IdentityUserPhotoGetRequest): Promise<IdentityUserPhotoRecord> { return this.identityPhotoService.getPhoto(input); }
+  async createIdentityUser(input: IdentityWriteUserRequest): Promise<IdentityWriteUserDeviceResult[]> { return this.identityWriteService.create(input); }
+  async updateIdentityUser(input: IdentityWriteUserRequest): Promise<IdentityWriteUserDeviceResult[]> { return this.identityWriteService.update(input); }
+  async bulkCreateIdentityUsers(input: IdentityBulkCreateUsersRequest): Promise<IdentityBulkCreateUserDeviceResult[]> { return this.identityWriteService.bulkCreate(input); }
 
   ingestEvent(event: NormalizedEvent): void {
     this.store.upsertEvent(event, this.env.RETENTION_MS);

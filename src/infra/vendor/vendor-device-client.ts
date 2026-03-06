@@ -1,4 +1,12 @@
-import type { AccessCardRecord, AccessControlRecord, AccessUserRecord } from "../dahua/dahua-client.js";
+import type {
+  AccessCardRecord,
+  AccessControlRecord,
+  AccessFaceRecord,
+  AccessFaceWriteInput,
+  AccessUserRecord,
+  AccessUserWriteInput,
+  AccessCardWriteInput
+} from "../dahua/dahua-client.js";
 
 export type VendorDeviceClient = {
   connect(): Promise<void>;
@@ -18,4 +26,11 @@ export type VendorDeviceClient = {
     endTimeUtcSec: number;
     count: number;
   }): Promise<AccessControlRecord[]>;
+  createAccessUser(input: AccessUserWriteInput): Promise<void>;
+  updateAccessUser(input: AccessUserWriteInput): Promise<void>;
+  createAccessCard(input: AccessCardWriteInput): Promise<void>;
+  updateAccessCard(input: AccessCardWriteInput): Promise<void>;
+  findAccessFaces(input: { userIds: string[] }): Promise<AccessFaceRecord[]>;
+  createAccessFace(input: AccessFaceWriteInput): Promise<void>;
+  updateAccessFace(input: AccessFaceWriteInput): Promise<void>;
 };

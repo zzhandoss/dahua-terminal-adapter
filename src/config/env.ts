@@ -3,6 +3,8 @@ import { parseBooleanStrict } from "../shared/env-parse.js";
 
 const EnvSchema = z.object({
   NODE_ENV: z.string().default("development"),
+  LOG_OUTPUT: z.enum(["auto", "pretty", "console", "file"]).default("auto"),
+  LOG_DIR: z.string().default("./data/logs"),
   HOST: z.string().default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(8091),
   BASE_URL: z.string().url(),
@@ -33,9 +35,11 @@ const EnvSchema = z.object({
 
 type ParsedEnv = z.infer<typeof EnvSchema>;
 
-export type AppEnv = Omit<ParsedEnv, "REJECT_UNAUTHORIZED" | "MOCK_ENABLED"> & {
+export type AppEnv = Omit<ParsedEnv, "REJECT_UNAUTHORIZED" | "MOCK_ENABLED" | "LOG_OUTPUT" | "LOG_DIR"> & {
   REJECT_UNAUTHORIZED: boolean;
   MOCK_ENABLED: boolean;
+  LOG_OUTPUT?: ParsedEnv["LOG_OUTPUT"];
+  LOG_DIR?: string;
 };
 
 export function loadEnv(): AppEnv {

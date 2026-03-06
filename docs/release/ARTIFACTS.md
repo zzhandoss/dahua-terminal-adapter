@@ -31,6 +31,7 @@ Contain production runtime bundle:
 - `.env.example`
 - `VERSION`
 - `BUILD_INFO.json`
+- `ops/`
 - OS-specific install/control scripts
 
 Do not include:

@@ -24,7 +24,7 @@ export async function registerWithRetry(input: {
         instanceKey: input.env.ADAPTER_INSTANCE_KEY,
         instanceName: input.env.ADAPTER_INSTANCE_NAME,
         version: input.env.ADAPTER_VERSION,
-        capabilities: ["realtime_push", "fetchEvents", "access_control", "identity_find"],
+        capabilities: ["realtime_push", "fetchEvents", "access_control", "identity_find", "exportUsers"],
         baseUrl: input.env.BASE_URL,
         retentionMs: input.env.RETENTION_MS,
         deviceSettingsSchema,

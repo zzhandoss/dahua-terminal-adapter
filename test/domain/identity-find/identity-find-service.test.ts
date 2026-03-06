@@ -180,37 +180,6 @@ describe("IdentityFindService", () => {
     expect(matches[0]?.displayName).toBe("Alice");
     expect(matches[0]?.source).toBe("accessUser");
   });
-
-  it("exports users with optional cards", async () => {
-    const assignment = makeAssignment();
-    const service = new IdentityFindService(
-      { get: () => assignment },
-      makeClientFactory({
-        users: [{ UserID: "u-1", UserName: "User 1", UserType: "0" }],
-        cards: [{ UserID: "u-2", CardNo: "C-2", CardName: "Card 2" }]
-      }) as unknown as DahuaClientFactory,
-      pino({ level: "silent" })
-    );
-
-    const users = await service.exportUsers({
-      deviceId: "dev-1",
-      limit: 10,
-      offset: 0,
-      includeCards: true
-    });
-
-    expect(users).toHaveLength(2);
-    expect(users[0]).toMatchObject({
-      terminalPersonId: "u-1",
-      displayName: "User 1",
-      source: "accessUser"
-    });
-    expect(users[1]).toMatchObject({
-      terminalPersonId: "u-2",
-      cardNo: "C-2",
-      source: "accessCard"
-    });
-  });
 });
 
 function makeAssignment(options?: {

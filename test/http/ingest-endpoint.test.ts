@@ -133,6 +133,8 @@ describe("POST /ingest/event digest", () => {
 function makeEnv(): AppEnv {
   return {
     NODE_ENV: "test",
+    LOG_OUTPUT: "auto",
+    LOG_DIR: "./data/logs",
     HOST: "127.0.0.1",
     PORT: 8091,
     BASE_URL: "http://127.0.0.1:8091",
@@ -179,6 +181,11 @@ function makeRuntimeStub(): {
   getSnapshot: () => { devices: unknown[] };
   backfill: () => Promise<[]>;
   findIdentity: () => Promise<[]>;
+  exportIdentityUsers: () => Promise<{ view: "flat"; users: []; devices: [] }>;
+  createIdentityUser: () => Promise<[]>;
+  updateIdentityUser: () => Promise<[]>;
+  getIdentityUserPhoto: () => Promise<{ deviceId: string; userId: string; photoData: null; photoUrl: null; faceData: null }>;
+  bulkCreateIdentityUsers: () => Promise<[]>;
 } {
   const ingested: NormalizedEvent[] = [];
   let failures = 0;
@@ -225,6 +232,27 @@ function makeRuntimeStub(): {
       return [];
     },
     async findIdentity() {
+      return [];
+    },
+    async exportIdentityUsers() {
+      return { view: "flat", users: [], devices: [] };
+    },
+    async createIdentityUser() {
+      return [];
+    },
+    async updateIdentityUser() {
+      return [];
+    },
+    async getIdentityUserPhoto() {
+      return {
+        deviceId: "dev-1",
+        userId: "u-1",
+        photoData: null,
+        photoUrl: null,
+        faceData: null
+      };
+    },
+    async bulkCreateIdentityUsers() {
       return [];
     }
   };

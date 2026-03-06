@@ -2,7 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import sensible from "@fastify/sensible";
 import type { AppEnv } from "../config/env.js";
 import type { AdapterRuntime } from "../app/adapter-runtime.js";
-import { parseBooleanLike } from "../shared/env-parse.js";
+import { logger } from "../shared/logger.js";
 import { DigestAuthServer } from "./digest-auth-server.js";
 import { registerDevUiRoutes } from "./dev-ui.js";
 import { registerIngestRoutes } from "./routes/ingest-routes.js";
@@ -12,9 +12,9 @@ import { fail } from "./http-envelope.js";
 
 export function buildServer(env: AppEnv, runtime: AdapterRuntime): FastifyInstance {
   const app = Fastify({
-    logger: buildFastifyLoggerOptions(),
+    loggerInstance: logger,
     bodyLimit: 10 * 1024 * 1024
-  });
+  }) as unknown as FastifyInstance;
   const digest = new DigestAuthServer(env.PUSH_DIGEST_REALM, env.PUSH_DIGEST_NONCE_TTL_MS);
 
   app.addContentTypeParser(
@@ -56,25 +56,4 @@ function hasStatusCode(error: unknown): error is { statusCode: number } {
     return false;
   }
   return "statusCode" in error && typeof (error as { statusCode: unknown }).statusCode === "number";
-}
-
-function buildFastifyLoggerOptions(): false | Record<string, unknown> {
-  const isDev = (process.env.NODE_ENV ?? "development") === "development";
-  const usePretty = parseBooleanLike(process.env.LOG_PRETTY, isDev);
-  if (!usePretty) {
-    return {
-      level: process.env.LOG_LEVEL ?? "info"
-    };
-  }
-  return {
-    level: process.env.LOG_LEVEL ?? "info",
-    transport: {
-      target: "pino-pretty",
-      options: {
-        colorize: true,
-        singleLine: true,
-        translateTime: "SYS:standard"
-      }
-    }
-  };
 }

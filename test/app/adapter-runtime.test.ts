@@ -33,6 +33,13 @@ describe("AdapterRuntime start", () => {
       const payload = register.mock.calls[0]?.[0] as Record<string, unknown>;
       expect(payload.deviceSettingsSchemaVersion).toBe(DEVICE_SETTINGS_SCHEMA_VERSION);
       expect(payload.deviceSettingsSchema).toBeDefined();
+      expect(payload.capabilities).toEqual([
+        "realtime_push",
+        "fetchEvents",
+        "access_control",
+        "identity_find",
+        "exportUsers"
+      ]);
     } finally {
       await runtime.stop();
     }
@@ -162,6 +169,8 @@ function makeLease(adapterId = "adapter-1"): AdapterLease {
 function makeEnv(overrides: Partial<AppEnv> = {}): AppEnv {
   return {
     NODE_ENV: "test",
+    LOG_OUTPUT: "auto",
+    LOG_DIR: "./data/logs",
     HOST: "127.0.0.1",
     PORT: 8091,
     BASE_URL: "http://127.0.0.1:8091",

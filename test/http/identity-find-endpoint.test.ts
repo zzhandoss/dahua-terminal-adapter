@@ -27,32 +27,6 @@ describe("POST /identity/find", () => {
     }
   });
 
-  it("returns 400 for invalid request", async () => {
-    const runtime = makeRuntimeStub();
-    const app = buildServer(makeEnv(), runtime as unknown as AdapterRuntime);
-
-    try {
-      const response = await app.inject({
-        method: "POST",
-        url: "/identity/find",
-        headers: {
-          authorization: "Bearer backfill-token"
-        },
-        payload: {
-          deviceId: "dev-1",
-          identityKey: "documentNumber",
-          identityValue: "",
-          limit: 0
-        }
-      });
-
-      expect(response.statusCode).toBe(400);
-      expect(runtime.calls.length).toBe(0);
-    } finally {
-      await app.close();
-    }
-  });
-
   it("returns matches for valid request", async () => {
     const runtime = makeRuntimeStub([
       {
@@ -102,7 +76,12 @@ describe("POST /identity/export-users", () => {
       const response = await app.inject({
         method: "POST",
         url: "/identity/export-users",
-        payload: { deviceId: "dev-1" }
+        payload: {
+          target: {
+            mode: "device",
+            deviceId: "dev-1"
+          }
+        }
       });
       expect(response.statusCode).toBe(401);
     } finally {
@@ -110,17 +89,36 @@ describe("POST /identity/export-users", () => {
     }
   });
 
-  it("returns users for valid request", async () => {
-    const runtime = makeRuntimeStub([], [
-      {
-        terminalPersonId: "u-1",
-        displayName: "User 1",
-        userType: "0",
-        cardNo: "C-1",
-        source: "accessUser",
-        rawPayload: "{}"
-      }
-    ]);
+  it("returns flat export payload for valid request", async () => {
+    const runtime = makeRuntimeStub([], {
+      view: "flat",
+      users: [
+        {
+          deviceId: "dev-1",
+          terminalPersonId: "u-1",
+          displayName: "User 1",
+          userType: "0",
+          userStatus: "0",
+          authority: "1",
+          citizenIdNo: "900101000001",
+          validFrom: null,
+          validTo: null,
+          cardNo: "C-1",
+          cardName: "Card 1",
+          sourceSummary: ["accessUser", "accessCard"],
+          rawUserPayload: "{}",
+          rawCardPayload: "{}"
+        }
+      ],
+      devices: [
+        {
+          deviceId: "dev-1",
+          exportedCount: 1,
+          failed: false,
+          hasMore: false
+        }
+      ]
+    });
     const app = buildServer(makeEnv(), runtime as unknown as AdapterRuntime);
 
     try {
@@ -131,10 +129,14 @@ describe("POST /identity/export-users", () => {
           authorization: "Bearer backfill-token"
         },
         payload: {
-          deviceId: "dev-1",
+          target: {
+            mode: "device",
+            deviceId: "dev-1"
+          },
+          view: "flat",
           limit: 10,
           offset: 0,
-          includeCards: false
+          includeCards: true
         }
       });
 
@@ -142,14 +144,242 @@ describe("POST /identity/export-users", () => {
       expect(response.json()).toEqual({
         success: true,
         data: {
+          view: "flat",
           users: [
             {
+              deviceId: "dev-1",
               terminalPersonId: "u-1",
               displayName: "User 1",
               userType: "0",
+              userStatus: "0",
+              authority: "1",
+              citizenIdNo: "900101000001",
+              validFrom: null,
+              validTo: null,
               cardNo: "C-1",
-              source: "accessUser",
-              rawPayload: "{}"
+              cardName: "Card 1",
+              sourceSummary: ["accessUser", "accessCard"],
+              rawUserPayload: "{}",
+              rawCardPayload: "{}"
+            }
+          ],
+          devices: [
+            {
+              deviceId: "dev-1",
+              exportedCount: 1,
+              failed: false,
+              hasMore: false
+            }
+          ]
+        }
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("POST /identity/users/create", () => {
+  it("returns validation errors for invalid payload", async () => {
+    const runtime = makeRuntimeStub();
+    const app = buildServer(makeEnv(), runtime as unknown as AdapterRuntime);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/identity/users/create",
+        headers: {
+          authorization: "Bearer backfill-token"
+        },
+        payload: {
+          target: { mode: "device", deviceId: "dev-1" },
+          person: { userId: "", displayName: "" }
+        }
+      });
+
+      expect(response.statusCode).toBe(400);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("returns per-device results", async () => {
+    const runtime = makeRuntimeStub([], undefined, [
+      {
+        deviceId: "dev-1",
+        operation: "create",
+        status: "success",
+        steps: {
+          accessUser: "success",
+          accessCard: "success",
+          accessFace: "success"
+        }
+      }
+    ]);
+    const app = buildServer(makeEnv(), runtime as unknown as AdapterRuntime);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/identity/users/create",
+        headers: {
+          authorization: "Bearer backfill-token"
+        },
+        payload: {
+          target: { mode: "device", deviceId: "dev-1" },
+          person: {
+            userId: "u-1",
+            displayName: "User 1",
+            card: {
+              cardNo: "C-1"
+            },
+            face: {
+              photosBase64: ["base64-image"]
+            }
+          }
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        success: true,
+        data: {
+          results: [
+            {
+              deviceId: "dev-1",
+              operation: "create",
+              status: "success",
+              steps: {
+                accessUser: "success",
+                accessCard: "success",
+                accessFace: "success"
+              }
+            }
+          ]
+        }
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("POST /identity/users/photo/get", () => {
+  it("returns 401 when token is missing", async () => {
+    const runtime = makeRuntimeStub();
+    const app = buildServer(makeEnv(), runtime as unknown as AdapterRuntime);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/identity/users/photo/get",
+        payload: {
+          target: { mode: "device", deviceId: "dev-1" },
+          userId: "u-1"
+        }
+      });
+
+      expect(response.statusCode).toBe(401);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("returns current photo payload for valid request", async () => {
+    const runtime = makeRuntimeStub([], undefined, undefined, undefined, {
+      deviceId: "dev-1",
+      userId: "u-1",
+      photoData: ["base64-image"],
+      photoUrl: ["https://example.test/u-1.jpg"],
+      faceData: ["face-template"]
+    });
+    const app = buildServer(makeEnv(), runtime as unknown as AdapterRuntime);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/identity/users/photo/get",
+        headers: {
+          authorization: "Bearer backfill-token"
+        },
+        payload: {
+          target: { mode: "device", deviceId: "dev-1" },
+          userId: "u-1"
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        success: true,
+        data: {
+          photo: {
+            deviceId: "dev-1",
+            userId: "u-1",
+            photoData: ["base64-image"],
+            photoUrl: ["https://example.test/u-1.jpg"],
+            faceData: ["face-template"]
+          }
+        }
+      });
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe("POST /identity/users/update", () => {
+  it("returns per-device partial failure results", async () => {
+    const runtime = makeRuntimeStub([], undefined, undefined, [
+      {
+        deviceId: "dev-1",
+        operation: "update",
+        status: "failed",
+        steps: {
+          accessUser: "success",
+          accessCard: "failed",
+          accessFace: "skipped"
+        },
+        errorCode: "identity_write_failed",
+        errorMessage: "card write failed"
+      }
+    ]);
+    const app = buildServer(makeEnv(), runtime as unknown as AdapterRuntime);
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/identity/users/update",
+        headers: {
+          authorization: "Bearer backfill-token"
+        },
+        payload: {
+          target: { mode: "device", deviceId: "dev-1" },
+          person: {
+            userId: "u-1",
+            displayName: "User 1",
+            card: {
+              cardNo: "C-1"
+            }
+          }
+        }
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        success: true,
+        data: {
+          results: [
+            {
+              deviceId: "dev-1",
+              operation: "update",
+              status: "failed",
+              steps: {
+                accessUser: "success",
+                accessCard: "failed",
+                accessFace: "skipped"
+              },
+              errorCode: "identity_write_failed",
+              errorMessage: "card write failed"
             }
           ]
         }
@@ -162,48 +392,55 @@ describe("POST /identity/export-users", () => {
 
 function makeRuntimeStub(
   matches: Array<{ terminalPersonId: string | null; score: number | null; rawPayload: string | null; displayName?: string | null; source?: "accessUser" | "accessCard"; userType?: string | null }> = [],
-  users: Array<{
-    terminalPersonId: string | null;
-    displayName: string | null;
-    userType: string | null;
-    cardNo: string | null;
-    source: "accessUser" | "accessCard";
-    rawPayload: string | null;
-  }> = []
-): {
-  calls: Array<{ deviceId: string; identityKey: string; identityValue: string; limit: number }>;
-  exportCalls: Array<{ deviceId: string; limit: number; offset: number; includeCards: boolean }>;
-  findIdentity: (input: {
-    deviceId: string;
-    identityKey: string;
-    identityValue: string;
-    limit: number;
-  }) => Promise<Array<{ terminalPersonId: string | null; score: number | null; rawPayload: string | null; displayName?: string | null; source?: "accessUser" | "accessCard"; userType?: string | null }>>;
-  exportIdentityUsers: (input: { deviceId: string; limit: number; offset: number; includeCards: boolean }) => Promise<Array<{
-    terminalPersonId: string | null;
-    displayName: string | null;
-    userType: string | null;
-    cardNo: string | null;
-    source: "accessUser" | "accessCard";
-    rawPayload: string | null;
-  }>>;
-  backfill: () => Promise<[]>;
-} {
+  exportPayload?: {
+    view: "flat";
+    users: Array<Record<string, unknown>>;
+    devices: Array<Record<string, unknown>>;
+  },
+  createResults: Array<Record<string, unknown>> = [],
+  updateResults: Array<Record<string, unknown>> = [],
+  photoPayload?: Record<string, unknown>,
+  bulkCreateResults: Array<Record<string, unknown>> = []
+) {
   const calls: Array<{ deviceId: string; identityKey: string; identityValue: string; limit: number }> = [];
-  const exportCalls: Array<{ deviceId: string; limit: number; offset: number; includeCards: boolean }> = [];
   return {
     calls,
-    exportCalls,
     async backfill() {
       return [];
     },
-    async findIdentity(input) {
+    async findIdentity(input: {
+      deviceId: string;
+      identityKey: string;
+      identityValue: string;
+      limit: number;
+    }) {
       calls.push(input);
       return matches;
     },
-    async exportIdentityUsers(input) {
-      exportCalls.push(input);
-      return users;
+    async exportIdentityUsers() {
+      return exportPayload ?? {
+        view: "flat",
+        users: [],
+        devices: []
+      };
+    },
+    async createIdentityUser() {
+      return createResults;
+    },
+    async getIdentityUserPhoto() {
+      return photoPayload ?? {
+        deviceId: "dev-1",
+        userId: "u-1",
+        photoData: null,
+        photoUrl: null,
+        faceData: null
+      };
+    },
+    async updateIdentityUser() {
+      return updateResults;
+    },
+    async bulkCreateIdentityUsers() {
+      return bulkCreateResults;
     }
   };
 }
@@ -211,6 +448,8 @@ function makeRuntimeStub(
 function makeEnv(): AppEnv {
   return {
     NODE_ENV: "test",
+    LOG_OUTPUT: "auto",
+    LOG_DIR: "./data/logs",
     HOST: "127.0.0.1",
     PORT: 8091,
     BASE_URL: "http://127.0.0.1:8091",

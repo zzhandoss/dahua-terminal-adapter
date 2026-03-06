@@ -1,7 +1,6 @@
 import type { Logger } from "pino";
 import type {
   AdapterAssignment,
-  IdentityExportUser,
   IdentityFindMatch,
   IdentityFindRequest
 } from "../../contracts/device-service.js";
@@ -54,54 +53,6 @@ export class IdentityFindService {
       }
       this.logger.error({ err: error, deviceId: input.deviceId }, "identity lookup failed");
       throw new IdentityFindError("vendor identity lookup failed", 502);
-    } finally {
-      await context.client.close().catch(() => undefined);
-    }
-  }
-
-  async exportUsers(input: {
-    deviceId: string;
-    limit: number;
-    offset: number;
-    includeCards: boolean;
-  }): Promise<IdentityExportUser[]> {
-    const assignment = this.assignments.get(input.deviceId);
-    if (!assignment) {
-      throw new IdentityFindError("device assignment not found", 404);
-    }
-
-    const context = this.clientFactory.create(assignment);
-    try {
-      await context.client.connect();
-      const users = await context.client.findAccessUsers({
-        condition: {},
-        limit: input.limit,
-        offset: input.offset
-      });
-      const out = users.map((record) => toExportUser(record, "accessUser"));
-      if (!input.includeCards) {
-        return out;
-      }
-
-      const cards = await context.client.findAccessCards({
-        condition: {},
-        limit: input.limit,
-        offset: input.offset
-      });
-      const existing = new Set(out.map((item) => item.terminalPersonId ?? `card:${item.cardNo ?? ""}`));
-      for (const card of cards) {
-        const next = toExportUser(card, "accessCard");
-        const dedupeKey = next.terminalPersonId ?? `card:${next.cardNo ?? ""}`;
-        if (existing.has(dedupeKey)) {
-          continue;
-        }
-        existing.add(dedupeKey);
-        out.push(next);
-      }
-      return out.slice(0, input.limit);
-    } catch (error) {
-      this.logger.error({ err: error, deviceId: input.deviceId }, "identity export failed");
-      throw new IdentityFindError("vendor identity export failed", 502);
     } finally {
       await context.client.close().catch(() => undefined);
     }
@@ -235,20 +186,6 @@ function toMatches(
     }
   }
   return out;
-}
-
-function toExportUser(
-  record: Record<string, unknown>,
-  source: "accessUser" | "accessCard"
-): IdentityExportUser {
-  return {
-    terminalPersonId: readOptionalString(record.UserID),
-    displayName: readDisplayName(record),
-    userType: readOptionalString(record.UserType),
-    cardNo: readOptionalString(record.CardNo),
-    source,
-    rawPayload: JSON.stringify({ source, record })
-  };
 }
 
 function isExactRecordMatch(

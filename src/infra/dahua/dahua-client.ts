@@ -1,6 +1,6 @@
 import { DigestAuthClient } from "./auth/digest-auth.js";
 import { DahuaRpcClient } from "./rpc/rpc-client.js";
-import { toIntOrNull, toObjectOrNull } from "../../shared/parse.js";
+import { parseJsonSafe, toIntOrNull, toObjectOrNull } from "../../shared/parse.js";
 
 export type DahuaConnectionConfig = {
   protocol: "http" | "https";
@@ -39,6 +39,45 @@ export type AccessUserRecord = Record<string, unknown> & {
 export type AccessCardRecord = Record<string, unknown> & {
   UserID?: unknown;
   CardNo?: unknown;
+};
+
+export type AccessFaceRecord = {
+  UserID?: string;
+  PhotoData?: string[];
+  PhotoURL?: string[];
+  FaceData?: string[];
+};
+
+export type AccessUserWriteInput = {
+  userId: string;
+  userName?: string;
+  userType?: number;
+  useTime?: number;
+  isFirstEnter?: boolean;
+  firstEnterDoors?: number[];
+  userStatus?: number;
+  authority?: number;
+  citizenIdNo?: string;
+  password?: string;
+  doors?: number[];
+  timeSections?: number[];
+  specialDaysSchedule?: number[];
+  validFrom?: string;
+  validTo?: string;
+};
+
+export type AccessCardWriteInput = {
+  cardNo: string;
+  userId: string;
+  cardType?: number;
+  cardName?: string;
+  cardStatus?: number;
+};
+
+export type AccessFaceWriteInput = {
+  userId: string;
+  photoData?: string[];
+  photoUrl?: string[];
 };
 
 export class DahuaClient {
@@ -117,6 +156,58 @@ export class DahuaClient {
     return parseAccessControlRows(kv);
   }
 
+  async createAccessUser(input: AccessUserWriteInput): Promise<void> {
+    await this.writeJson("/cgi-bin/AccessUser.cgi", { action: "insertMulti" }, {
+      UserList: [toAccessUserPayload(input)]
+    });
+  }
+
+  async updateAccessUser(input: AccessUserWriteInput): Promise<void> {
+    await this.writeJson("/cgi-bin/AccessUser.cgi", { action: "updateMulti" }, {
+      UserList: [toAccessUserPayload(input)]
+    });
+  }
+
+  async createAccessCard(input: AccessCardWriteInput): Promise<void> {
+    await this.writeJson("/cgi-bin/AccessCard.cgi", { action: "insertMulti" }, {
+      CardList: [toAccessCardPayload(input)]
+    });
+  }
+
+  async updateAccessCard(input: AccessCardWriteInput): Promise<void> {
+    await this.writeJson("/cgi-bin/AccessCard.cgi", { action: "updateMulti" }, {
+      CardList: [toAccessCardPayload(input)]
+    });
+  }
+
+  async findAccessFaces(input: { userIds: string[] }): Promise<AccessFaceRecord[]> {
+    if (input.userIds.length === 0) {
+      return [];
+    }
+
+    const response = await this.cgiGet("/cgi-bin/AccessFace.cgi", toIndexedQuery("UserIDList", input.userIds, {
+      action: "list"
+    })).catch((error: unknown) => {
+      if (isMissingAccessFaceError(error)) {
+        return "";
+      }
+      throw error;
+    });
+    return parseAccessFaceRows(parseKeyValueLines(response));
+  }
+
+  async createAccessFace(input: AccessFaceWriteInput): Promise<void> {
+    await this.writeJson("/cgi-bin/AccessFace.cgi", { action: "insertMulti" }, {
+      FaceList: [toAccessFacePayload(input)]
+    });
+  }
+
+  async updateAccessFace(input: AccessFaceWriteInput): Promise<void> {
+    await this.writeJson("/cgi-bin/AccessFace.cgi", { action: "updateMulti" }, {
+      FaceList: [toAccessFacePayload(input)]
+    });
+  }
+
   private async runAccessFind(input: {
     path: string;
     condition: Record<string, string>;
@@ -173,17 +264,26 @@ export class DahuaClient {
   }
 
   private async cgiGet(path: string, query: Record<string, string>): Promise<string> {
-    const response = await this.digest.request({
+    return this.sendCgiRequest({
       method: "GET",
-      url: this.makeCgiUrl(path, query),
-      timeoutMs: this.config.requestTimeoutMs
+      path,
+      query
     });
+  }
 
-    if (response.statusCode < 200 || response.statusCode > 299) {
-      const body = await response.body.text();
-      throw new Error(`cgi status ${response.statusCode}: ${body}`);
+  private async writeJson(path: string, query: Record<string, string>, body: Record<string, unknown>): Promise<void> {
+    const response = await this.sendCgiRequest({
+      method: "POST",
+      path,
+      query,
+      body: JSON.stringify(body),
+      headers: {
+        "content-type": "application/json"
+      }
+    });
+    if (response.trim() !== "" && response.trim().toUpperCase() !== "OK" && parseJsonSafe(response) === null) {
+      throw new Error(`cgi write unexpected response: ${response}`);
     }
-    return response.body.text();
   }
 
   private makeCgiUrl(path: string, query: Record<string, string>): string {
@@ -200,6 +300,28 @@ export class DahuaClient {
     }
     await this.rpc.login();
     this.rpcSessionReady = true;
+  }
+
+  private async sendCgiRequest(input: {
+    method: "GET" | "POST";
+    path: string;
+    query: Record<string, string>;
+    body?: string;
+    headers?: Record<string, string>;
+  }): Promise<string> {
+    const response = await this.digest.request({
+      method: input.method,
+      url: this.makeCgiUrl(input.path, input.query),
+      body: input.body,
+      headers: input.headers,
+      timeoutMs: this.config.requestTimeoutMs
+    });
+
+    if (response.statusCode < 200 || response.statusCode > 299) {
+      const body = await response.body.text();
+      throw new Error(`cgi status ${response.statusCode}: ${body}`);
+    }
+    return response.body.text();
   }
 }
 
@@ -295,4 +417,120 @@ function parseOptionalInt(value: string | undefined): number | null {
     return null;
   }
   return toIntOrNull(value);
+}
+
+function isMissingAccessFaceError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes("cgi status 404")
+    || error.message.includes("cgi status 400: Error\r\nBad Request!");
+}
+
+function parseAccessFaceRows(kv: Record<string, string>): AccessFaceRecord[] {
+  const records = new Map<number, AccessFaceRecord>();
+
+  for (const [key, value] of Object.entries(kv)) {
+    const userMatch = key.match(/^FaceDataList\[(\d+)\]\.UserID$/);
+    if (userMatch) {
+      const index = Number.parseInt(userMatch[1] ?? "", 10);
+      const record = records.get(index) ?? {};
+      record.UserID = stripOptionalQuotes(value);
+      records.set(index, record);
+      continue;
+    }
+
+    const arrayMatch = key.match(/^FaceDataList\[(\d+)\]\.(PhotoData|PhotoURL|FaceData)\[(\d+)\]$/);
+    if (!arrayMatch) {
+      continue;
+    }
+    const index = Number.parseInt(arrayMatch[1] ?? "", 10);
+    const field = arrayMatch[2] as "PhotoData" | "PhotoURL" | "FaceData";
+    const valueIndex = Number.parseInt(arrayMatch[3] ?? "", 10);
+    const record = records.get(index) ?? {};
+    const current = record[field] ?? [];
+    current[valueIndex] = stripOptionalQuotes(value);
+    record[field] = current;
+    records.set(index, record);
+  }
+
+  return [...records.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, record]) => ({
+      UserID: record.UserID,
+      PhotoData: record.PhotoData?.filter(Boolean),
+      PhotoURL: record.PhotoURL?.filter(Boolean),
+      FaceData: record.FaceData?.filter(Boolean)
+    }))
+    .filter((record) => record.UserID);
+}
+
+function toAccessUserPayload(input: AccessUserWriteInput): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    UserID: input.userId
+  };
+  assignOptional(out, "UserName", input.userName);
+  assignOptional(out, "UserType", input.userType);
+  assignOptional(out, "UseTime", input.useTime);
+  assignOptional(out, "IsFirstEnter", input.isFirstEnter);
+  assignOptional(out, "FirstEnterDoors", input.firstEnterDoors);
+  assignOptional(out, "UserStatus", input.userStatus);
+  assignOptional(out, "Authority", input.authority);
+  assignOptional(out, "CitizenIDNo", input.citizenIdNo);
+  assignOptional(out, "Password", input.password);
+  assignOptional(out, "Doors", input.doors);
+  assignOptional(out, "TimeSections", input.timeSections);
+  assignOptional(out, "SpecialDaysSchedule", input.specialDaysSchedule);
+  assignOptional(out, "ValidFrom", input.validFrom);
+  assignOptional(out, "ValidTo", input.validTo);
+  return out;
+}
+
+function toAccessCardPayload(input: AccessCardWriteInput): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    CardNo: input.cardNo,
+    UserID: input.userId
+  };
+  assignOptional(out, "CardType", input.cardType);
+  assignOptional(out, "CardName", input.cardName);
+  assignOptional(out, "CardStatus", input.cardStatus);
+  return out;
+}
+
+function toAccessFacePayload(input: AccessFaceWriteInput): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    UserID: input.userId
+  };
+  assignOptional(out, "PhotoData", input.photoData);
+  assignOptional(out, "PhotoURL", input.photoUrl);
+  return out;
+}
+
+function assignOptional(target: Record<string, unknown>, key: string, value: unknown): void {
+  if (value === undefined || value === null) {
+    return;
+  }
+  if (Array.isArray(value) && value.length === 0) {
+    return;
+  }
+  target[key] = value;
+}
+
+function toIndexedQuery(
+  prefix: string,
+  values: string[],
+  extra: Record<string, string>
+): Record<string, string> {
+  const out = { ...extra };
+  for (const [index, value] of values.entries()) {
+    out[`${prefix}[${index}]`] = value;
+  }
+  return out;
+}
+
+function stripOptionalQuotes(value: string): string {
+  if (value.length >= 2 && value.startsWith("\"") && value.endsWith("\"")) {
+    return value.slice(1, -1);
+  }
+  return value;
 }
